@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美股周期深度调查系统 v11.2 - Final Debugged</title>
+    <style>
+        :root {
+            --bg-main: #050507;
+            --bg-sidebar: #0c0d0f;
+            --bg-card: #141517;
+            --border-color: #2a2b2e;
+            --text-primary: #f4f4f5;
+            --text-secondary: #8e8e93;
+            --accent-color: #3b82f6;
+            --bull-color: #10b981;
+            --bear-color: #ef4444;
+            --neutral-color: #f59e0b;
+            --font-mono: 'JetBrains Mono', 'Menlo', monospace;
+            --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: var(--font-sans);
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 侧边栏布局优化 */
+        #sidebar {
+            width: 480px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .header-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 4px; background: #1a1b1e; padding: 4px; border-radius: 8px; }
+        .btn-sm { 
+            background: transparent; border: none; color: var(--text-secondary); 
+            padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        .btn-sm.active { background: #2d2e32; color: #fff; font-weight: bold; }
+
+        /* 统一标题样式 */
+        .section-label { 
+            font-size: 0.7rem; 
+            color: var(--text-secondary); 
+            margin-bottom: 12px; 
+            font-weight: 700; 
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .section-label::before { content: ''; width: 2px; height: 10px; background: var(--accent-color); }
+
+        /* 图表容器 */
+        .chart-container {
+            background: #000;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 18px;
+        }
+        .trend-chart { width: 100%; height: 100px; display: flex; align-items: flex-end; gap: 4px; padding-bottom: 4px; border-bottom: 1px solid #222; }
+        .chart-bar { flex: 1; background: var(--accent-color); opacity: 0.35; border-radius: 2px 2px 0 0; transition: height 0.3s ease; }
+        .chart-desc { font-size: 0.75rem; color: var(--text-secondary); margin-top: 12px; line-height: 1.6; }
+
+        /* 日历样式 */
+        .calendar-box { background: #000; border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .cal-head { font-size: 0.65rem; color: #52525b; text-align: center; padding-bottom: 10px; font-weight: 700; }
+        .cal-day { 
+            aspect-ratio: 1; display: flex; align-items: center; justify-content: center; 
+            font-size: 0.8rem; color: #3a3b3e; border-radius: 6px; font-family: var(--font-mono);
+            transition: all 0.2s;
+        }
+        .cal-day.active { color: #a1a1aa; }
+        .cal-day.today { border: 1px solid var(--accent-color); color: #fff; }
+        .cal-day.event { 
+            background: rgba(59, 130, 246, 0.12); color: var(--accent-color); 
+            cursor: pointer; font-weight: bold;
+        }
+        .cal-day.event:hover { background: var(--accent-color); color: #fff; }
+
+        /* 板块预测卡片 */
+        .sector-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; }
+        .sector-item { margin-bottom: 18px; }
+        .sector-item:last-child { margin-bottom: 0; }
+        .sector-header { font-size: 0.8rem; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .bull-header { color: var(--bull-color); }
+        .bear-header { color: var(--bear-color); }
+        .sector-content { font-size: 0.85rem; line-height: 1.5; color: #f4f4f5; font-weight: 500; }
+        .sector-reason { font-size: 0.75rem; color: var(--text-secondary); margin-top: 6px; border-left: 2px solid #333; padding-left: 10px; line-height: 1.4; }
+
+        /* 主视图布局 */
+        #main-view { flex: 1; padding: 48px; overflow-y: auto; background: radial-gradient(circle at 50% 0%, #1a1b1e 0%, #050507 80%); }
+        .month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
+        .card { 
+            background: var(--bg-card); border: 1px solid var(--border-color); padding: 28px; 
+            border-radius: 16px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card:hover { border-color: var(--accent-color); transform: translateY(-4px); box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+        .card.active { border-color: var(--accent-color); background: rgba(59, 130, 246, 0.05); box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.1); }
+        .card-title { font-size: 1.4rem; font-weight: 800; display: block; margin-bottom: 10px; color: #fff; }
+        .card-meta { font-size: 0.75rem; color: var(--bull-color); font-family: var(--font-mono); font-weight: 700; }
+
+        /* Tooltip 深度美化 */
+        #tooltip {
+            display: none; position: fixed; background: rgba(22, 23, 25, 0.95); backdrop-filter: blur(10px); color: #fff; 
+            padding: 18px; border-radius: 12px; width: 340px; z-index: 1000;
+            border: 1px solid #3a3b3e; pointer-events: none; box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+        }
+        .tip-event-name { font-size: 1.1rem; font-weight: 900; color: var(--accent-color); margin-bottom: 6px; }
+        .tip-expect { background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent-color); padding: 10px; margin: 12px 0; border-radius: 4px; font-size: 0.8rem; }
+        .scenario-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+
+<div id="tooltip"></div>
+
+<aside id="sidebar">
+    <div class="header-nav">
+        <div class="btn-group">
+            <button class="btn-sm active" onclick="setYear(2025, this)">2025</button>
+            <button class="btn-sm" onclick="setYear(2026, this)">2026</button>
+        </div>
+        <div class="btn-group">
+            <button class="btn-sm active" id="btn-zh" onclick="setLang('zh')">中文</button>
+            <button class="btn-sm" id="btn-en" onclick="setLang('en')">English</button>
+        </div>
+    </div>
+
+    <div id="sidebar-month-name" style="font-size: 1.8rem; font-weight: 900; color: #fff; margin-bottom: 5px;"></div>
+
+    <div class="chart-container">
+        <div class="section-label" id="label-baseline">Monthly Baseline</div>
+        <div class="trend-chart" id="month-chart"></div>
+        <div class="chart-desc" id="month-desc-text"></div>
+    </div>
+
+    <div class="calendar-box" id="cal-mount"></div>
+
+    <div id="sector-mount"></div>
+</aside>
+
+<main id="main-view">
+    <div style="margin-bottom: 40px;">
+        <h1 id="ui-title" style="margin:0; font-size:3rem; letter-spacing:-1.5px; font-weight: 900;">周期调查终端</h1>
+        <p id="ui-sub" style="color:var(--text-secondary); margin-top:14px; font-size:1.15rem; max-width: 600px; line-height: 1.6;"></p>
+    </div>
+    <div class="month-grid" id="month-mount"></div>
+</main>
+
+<script>
+    let currentYear = 2025;
+    let currentLang = 'zh';
+    let activeMonth = new Date().getMonth();
+
+    const cycleData = [
+        {
+            zh: { name: "一月", desc: "新年效应注入。月初资金流入显著，若首周走强，全月上涨概率达 72%。", trendText: "走势：月初筑底后单边拉升", bullSectors: "科技成长、AI半导体、小型股", bearSectors: "避险国债、高息公用事业", bullWhy: "风险偏好回归，新年机构重新进场建仓", bearWhy: "资金从防御板块流出，追逐高弹性资产" },
+            en: { name: "January", desc: "The January Effect. Strong inflows early month; if Week 1 is green, 72% win prob.", trendText: "Trend: Bottoming followed by steady rally", bullSectors: "Tech Growth, AI & Semis, Small Caps", bearSectors: "Treasuries, Utilities", bullWhy: "Risk-on appetite as institutions rebalance", bearWhy: "Capital rotates out of safe havens for growth" },
+            trend: [15, 30, 45, 40, 55, 70, 85, 90],
+            events: { "2": { zh: { t: "新年资金流向", d: "各大机构在新年首日披露仓位调整。", exp: "利好：收红且成交量放大", scenarios: { bull: "+2.2% 突破", neut: "震荡收平", bear: "-1.5% 抛压" } }, en: { t: "New Year Inflows", d: "Major fund rebalancing disclosures.", exp: "Bull: Green close with high vol", scenarios: { bull: "+2.2% Breakout", neut: "Flat", bear: "-1.5% Sell-off" } } } }
+        },
+        {
+            zh: { name: "二月", desc: "财报季波动。市场对未来季度指引极度敏感，通常呈现‘前高后低’特征。", trendText: "走势：上半月震荡，下半月承压", bullSectors: "传统能源、工业生产、周期股", bearSectors: "高市盈率 SaaS 软件、成长股", bullWhy: "实物资产在通胀预期波动中表现稳健", bearWhy: "对利率敏感的软件股在通胀脉冲中受压" },
+            en: { name: "February", desc: "Earnings Volatility. High sensitivity to forward guidance; typically 'First Half High'.", trendText: "Trend: Mid-month pivot toward downside", bullSectors: "Energy, Industrials, Cyclicals", bearSectors: "High P/E SaaS, Speculative Growth", bullWhy: "Hard assets resilient during macro shifts", bearWhy: "Interest rate sensitivity weighs on valuations" },
+            trend: [85, 80, 75, 50, 45, 55, 40, 35],
+            events: { "14": { zh: { t: "CPI 通胀数据", d: "美联储利率路径的核心参考。", exp: "利好：CPI 数据低于市场预期", scenarios: { bull: "估值重估拉升", neut: "区间震荡", bear: "破位急跌" } }, en: { t: "CPI Inflation Data", d: "Key Fed pivot metric.", exp: "Bull: CPI lower than expected", scenarios: { bull: "Valuation Rally", neut: "Rangebound", bear: "Flash Break" } } } }
+        },
+        {
+            zh: { name: "三月", desc: "季末调仓窗口。伴随四巫日到期，市场常在月中产生 V 型转折。", trendText: "走势：季末 V 型大反转", bullSectors: "大型银行、保险、旅游消费", bearSectors: "避险黄金、日元、长期债", bullWhy: "季末机构对价值板块的补涨配置需求", bearWhy: "风险情绪好转导致避险资金撤离" },
+            en: { name: "March", desc: "Q1 Rebalancing. Quad Witching often triggers mid-month V-shaped reversals.", trendText: "Trend: Strong Quarter-end recovery", bullSectors: "Banks, Insurance, Travel", bearSectors: "Gold, JPY, Long-term Bonds", bullWhy: "Value sector catch-up post-rebalance", bearWhy: "Improved sentiment drains safe-haven bids" },
+            trend: [35, 25, 15, 10, 50, 65, 80, 85],
+            events: { "15": { zh: { t: "Q1 四巫日", d: "四类衍生品集中到期，波动率极点。", exp: "利好：大量平仓单带来空头挤压", scenarios: { bull: "空头挤压大涨", neut: "巨量横盘", bear: "流动性踩踏" } }, en: { t: "Q1 Quad Witching", d: "Massive derivative expiration.", exp: "Bull: Short-covering rally", scenarios: { bull: "Short Squeeze", neut: "High Vol Flat", bear: "Flash Crash" } } } }
+        },
+        {
+            zh: { name: "四月", desc: "传统强势月份。退税资金入市与 Q1 财报优预期共同推高市场。", trendText: "走势：单边主升浪", bullSectors: "全科技板块、可选消费、支付", bearSectors: "医药防御、公共事业", bullWhy: "退税资金入市与成长股业绩确认", bearWhy: "牛市冲锋期资金不屑于防御避风港" },
+            en: { name: "April", desc: "Historically strongest. Tax refunds and Q1 optimism drive the primary trend.", trendText: "Trend: Unchecked uptrend", bullSectors: "All-Tech, Consumer Disc, Payments", bearSectors: "Healthcare, Utilities", bullWhy: "Tax refund inflows & earnings confirmation", bearWhy: "Defensives ignored during aggressive bull moves" },
+            trend: [50, 60, 70, 80, 85, 95, 100, 100],
+            events: { "15": { zh: { t: "税务截止窗口", d: "美国报税截止，个人投资者资金流回升。", exp: "利好：散户交易账户资金显著流入", scenarios: { bull: "中小盘爆发", neut: "指数稳增", bear: "利好兑现小跌" } }, en: { t: "Tax Deadline", d: "Retail flows increase post-deadline.", exp: "Bull: Significant retail account inflows", scenarios: { bull: "Small Cap Surge", neut: "Index Grind", bear: "Sell-the-news" } } } }
+        },
+        {
+            zh: { name: "五月", desc: "防御博弈开始。‘Sell in May’ 心理压制，资金寻找避风港。", trendText: "走势：高位滞涨阴跌", bullSectors: "医疗器械、必选消费、高股息", bearSectors: "半导体设备、高增长SaaS", bullWhy: "防御性配置需求季节性回升", bearWhy: "获利盘在夏季低迷期到来前撤离" },
+            en: { name: "May", desc: "Defensive shift. 'Sell in May' psychology creates overhead pressure.", trendText: "Trend: Stagnation and drift", bullSectors: "Med-Tech, Staples, High Div", bearSectors: "Semis, High-Growth SaaS", bullWhy: "Defensive positioning for summer lull", bearWhy: "Profit-taking ahead of seasonal low liquidity" },
+            trend: [95, 90, 80, 75, 65, 50, 40, 35],
+            events: { "1": { zh: { t: "季节性转向点", d: "大机构开始执行夏季防御对冲。", exp: "利空：大盘跌破 20 日关键均线", scenarios: { bull: "抵抗式反弹", neut: "缩量横盘", bear: "加速探底" } }, en: { t: "Seasonal Pivot", d: "Institutions begin summer hedging.", exp: "Bear: Index breaks below 20-DMA", scenarios: { bull: "Relief Bounce", neut: "Low Vol Flat", bear: "Accelerated Sell" } } } }
+        },
+        {
+            zh: { name: "六月", desc: "年中结账月。为了半年报业绩，‘橱窗粉饰’操作频发。", trendText: "走势：下半月爆发式冲高", bullSectors: "纳斯达克100龙头、指数权重", bearSectors: "非成分股、题材垃圾股", bullWhy: "基金经理为半年报拉抬核心持仓净值", bearWhy: "资金集中于核心标的，边缘股失血" },
+            en: { name: "June", desc: "Half-year closing. 'Window dressing' logic dictates late-month moves.", trendText: "Trend: Late-month breakout", bullSectors: "Nasdaq-100, Mega-Cap Weights", bearSectors: "Non-index, Speculative Stocks", bullWhy: "Managers pump heavyweights for NAV reporting", bearWhy: "Liquidity drains from speculative periphery" },
+            trend: [35, 40, 45, 50, 60, 75, 90, 95],
+            events: { "30": { zh: { t: "半年报决战", d: "上半年最后一个交易日，资金极度活跃。", exp: "利好：蓝筹股尾盘出现暴力拉升", scenarios: { bull: "收复失地", neut: "窄幅波动", bear: "拉升失败" } }, en: { t: "H1 Closing Bell", d: "Final trading day for H1 performance.", exp: "Bull: Unusual bid in mega-caps", scenarios: { bull: "Strong Rally", neut: "Flat", bear: "Fail-over" } } } }
+        },
+        {
+            zh: { name: "七月", desc: "夏季爬坡。Q2 财报季初期通常乐观，波动率处于全年低位。", trendText: "走势：稳定低波爬坡", bullSectors: "云计算、流媒体、AI应用", bearSectors: "传统制造、采矿业", bullWhy: "财报优预期支撑，低流动性利于缓涨", bearWhy: "缺乏强力宏观驱动，周期股表现平平" },
+            en: { name: "July", desc: "Summer Grind. Optimism during Q2 earnings launch; low volatility environment.", trendText: "Trend: Steady upward grind", bullSectors: "Cloud, Streaming, AI Apps", bearSectors: "Manufacturing, Mining", bullWhy: "Earnings optimism support in thin markets", bearWhy: "Lack of macro catalysts weighs on cyclicals" },
+            trend: [65, 70, 75, 85, 95, 98, 92, 88],
+            events: { "20": { zh: { t: "科技股业绩潮", d: "苹果、谷歌等巨头决定市场估值上限。", exp: "利好：AI 营收转化超乎预期", scenarios: { bull: "开启二次主升", neut: "利好兑现", bear: "高位崩坍" } }, en: { t: "Tech Earnings Wave", d: "Mega-caps define market valuation ceiling.", exp: "Bull: AI monetization beats expectations", scenarios: { bull: "Secondary Rally", neut: "Consolidation", bear: "Collapse" } } } }
+        },
+        {
+            zh: { name: "八月", desc: "流动性陷阱。休假季节导致买盘极薄，任何风吹草动都会放大下跌。", trendText: "走势：阴跌伴随闪崩", bullSectors: "贵金属、美元、反向对冲工具", bearSectors: "全部科技股、半导体、房地产", bullWhy: "市场避险情绪在极低流动性中升温", bearWhy: "无支撑下的估值修正，跌幅通常超预期" },
+            en: { name: "August", desc: "Liquidity Trap. Thin order books during vacation season amplify volatility.", trendText: "Trend: Drifting with flash risk", bullSectors: "Precious Metals, USD, Inverse Hedges", bearSectors: "Tech, Semis, Real Estate", bullWhy: "Hedging demand spikes in thin markets", bearWhy: "Valuation correction magnified by lack of bids" },
+            trend: [85, 75, 65, 60, 50, 45, 48, 42],
+            events: { "25": { zh: { t: "杰克逊霍尔年会", d: "全球央行发布下半年政策主调。", exp: "利好：确认结束紧缩周期", scenarios: { bull: "情绪大逆转", neut: "反复拉锯", bear: "鹰派打击" } }, en: { t: "Jackson Hole", d: "Central bank policy steer.", exp: "Bull: Dovish signals confirmed", scenarios: { bull: "Trend Reversal", neut: "Choppy", bear: "Hawkish Shock" } } } }
+        },
+        {
+            zh: { name: "九月", desc: "魔咒之月。历史上表现最差，机构回归后往往先执行减仓。", trendText: "走势：加速跳水探底", bullSectors: "现金、高息定存、大宗农业", bearSectors: "工业自动化、耐用消费品、半导体", bullWhy: "避险为王，现金流充足的板块最具防御力", bearWhy: "季节性抛压最重，高贝塔板块惨遭血洗" },
+            en: { name: "September", desc: "The Cruelest Month. Historically the worst performer post-holiday.", trendText: "Trend: Sharp acceleration downward", bullSectors: "Cash, CD's, Agriculture", bearSectors: "Industrials, Durables, Semis", bullWhy: "Cash is king; defensives provide buffer", bearWhy: "Peak seasonal selling hits high-beta assets" },
+            trend: [60, 45, 30, 20, 10, 5, 2, 0],
+            events: { "15": { zh: { t: "九月四巫日", d: "衍生品最后防线，流动性危机爆发点。", exp: "利空：期权到期引发大规模清算", scenarios: { bull: "极度恐慌后反弹", neut: "加速探底", bear: "流动性崩溃" } }, en: { t: "Sept Quad Witching", d: "Peak liquidity risk event.", exp: "Bear: Forced liquidations on expiry", scenarios: { bull: "Panic Bounce", neut: "Flash Drop", bear: "Liquidity Collapse" } } } }
+        },
+        {
+            zh: { name: "十月", desc: "反转之月。著名的‘熊市杀手’，通常在月中见底后反弹。", trendText: "走势：先杀跌后反转", bullSectors: "跌超的云科技、支付、电商", bearSectors: "前期抗跌的银行、公用事业", bullWhy: "超卖后的均值回归，资金回流高弹性品种", bearWhy: "补跌效应，防御股遭抛弃去填平亏损" },
+            en: { name: "October", desc: "The Bear Killer. Famous for finding long-term bottoms in mid-month.", trendText: "Trend: Capitulation followed by pivot", bullSectors: "Oversold SaaS, Payments, E-comm", bearSectors: "Banks, Utilities (Lagging)", bullWhy: "Mean reversion; capital flows back to beta", bearWhy: "Lagging defensives sold to cover losses" },
+            trend: [5, 2, 0, 30, 55, 75, 85, 90],
+            events: { "15": { zh: { t: "情绪出清窗口", d: "恐慌指数见顶日，通常是中线底部。", exp: "利好：VIX 指数触及 35 后回落", scenarios: { bull: "暴力反弹", neut: "反复筑底", bear: "二次回踩" } }, en: { t: "Capitulation Window", d: "VIX peak usually signals the bottom.", exp: "Bull: VIX hits 35 then reverses", scenarios: { bull: "Violent Rally", neut: "Bottoming", bear: "Double Bottom" } } } }
+        },
+        {
+            zh: { name: "十一月", desc: "拉升节奏。大选后或季节性补涨，消费旺季推升情绪。", trendText: "走势：单边主升浪", bullSectors: "零售贸易、物流、金融科技", bearSectors: "制药、电信运营", bullWhy: "消费季预期与企业回购窗口期开启", bearWhy: "通胀预期若升温，对利率敏感资产受压" },
+            en: { name: "November", desc: "The Charge. Post-election or seasonal lift fueled by shopping fever.", trendText: "Trend: Strong trend higher", bullSectors: "Retail, Logistics, FinTech", bearSectors: "Pharma, Telecom", bullWhy: "Spending spree & buyback window opens", bearWhy: "Inflation spikes weigh on yield-sensitives" },
+            trend: [65, 75, 85, 90, 95, 98, 100, 100],
+            events: { "28": { zh: { t: "黑色星期五", d: "消费信心大考，决定零售股年报预期。", exp: "利好：在线支出同比增长超 6%", scenarios: { bull: "板块全面暴涨", neut: "板块轮动", bear: "衰退担忧" } }, en: { t: "Black Friday", d: "The consumer exam for retail stocks.", exp: "Bull: Online spend YoY > 6%", scenarios: { bull: "Sector Rally", neut: "Rotation", bear: "Recession Scare" } } } }
+        },
+        {
+            zh: { name: "十二月", desc: "收官季节。前半月税务收割，后半月圣诞拉升。", trendText: "走势：先抑后扬圣诞牛", bullSectors: "各板块龙头蓝筹、指数基金", bearSectors: "绩差垃圾股、低成交仙股", bullWhy: "机构清算垃圾股后重新拥抱蓝筹", bearWhy: "税务收割令亏损严重的个股面临持续抛压" },
+            en: { name: "December", desc: "Santa Claus Rally. Tax harvesting early followed by festive pump.", trendText: "Trend: Early dip then Santa pump", bullSectors: "Blue-chip Leaders, Index Funds", bearSectors: "Low-quality Penny Stocks", bullWhy: "Flight to quality post-tax harvesting", bearWhy: "Tax-loss harvesting punishes losers" },
+            trend: [85, 70, 60, 65, 80, 95, 100, 100],
+            events: { "24": { zh: { t: "圣诞拉升启动", d: "无量空头挤压，极具诱惑力的上涨。", exp: "利好：标普维持在 5 日均线上方", scenarios: { bull: "创历史新高", neut: "高位横盘", bear: "拉升失败" } }, en: { t: "Santa Rally Launch", d: "Low-volume short squeeze pump.", exp: "Bull: S&P holds 5-DMA", scenarios: { bull: "New ATH", neut: "High Level Flat", bear: "Failed Pump" } } } }
+        }
+    ];
+
+    const i18n = {
+        zh: {
+            days: ["日", "一", "二", "三", "四", "五", "六"],
+            ui: { 
+                title: "周期调查终端", 
+                sub: "基于历史深度回测与消息脉冲变量的动态走势模拟系统",
+                baseline: "月度历史基准走势",
+                impact: "消息影响深度调查",
+                expectation: "市场逻辑期待",
+                scenarios: { b: "利好情境", n: "中性情境", be: "利空情境" },
+                reportSuffix: "月度深度报告",
+                sectors: { bull: "上涨潜力板块", bear: "下跌风险板块", why: "逻辑依据" }
+            }
+        },
+        en: {
+            days: ["S", "M", "T", "W", "T", "F", "S"],
+            ui: { 
+                title: "Cycle Intel Terminal", 
+                sub: "Dynamic trend simulation based on deep historical backtesting and event impulse variables.",
+                baseline: "MONTHLY HISTORICAL BASELINE",
+                impact: "EVENT IMPACT ANALYSIS",
+                expectation: "MARKET EXPECTATION",
+                scenarios: { b: "BULLISH", n: "NEUTRAL", be: "BEARISH" },
+                reportSuffix: "Monthly Strategy",
+                sectors: { bull: "TOP PICK SECTORS", bear: "RISK EXPOSURE", why: "RATIONALE" }
+            }
+        }
+    };
+
+    function setYear(y, el) {
+        currentYear = y;
+        document.querySelectorAll('.btn-group:first-child .btn-sm').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+        refresh();
+    }
+
+    function setLang(l) {
+        currentLang = l;
+        document.getElementById('btn-zh').classList.toggle('active', l==='zh');
+        document.getElementById('btn-en').classList.toggle('active', l==='en');
+        refresh();
+    }
+
+    function refresh() {
+        const set = i18n[currentLang];
+        document.getElementById('ui-title').innerText = set.ui.title;
+        document.getElementById('ui-sub').innerText = set.ui.sub;
+        document.getElementById('label-baseline').innerText = set.ui.baseline;
+        renderMonths();
+        updateSelection(activeMonth);
+    }
+
+    function renderMonths() {
+        const mount = document.getElementById('month-mount');
+        mount.innerHTML = '';
+        cycleData.forEach((data, i) => {
+            const card = document.createElement('div');
+            card.className = `card ${i === activeMonth ? 'active' : ''}`;
+            const prob = data.trend[data.trend.length - 1];
+            card.innerHTML = `<span class="card-title">${data[currentLang].name}</span><span class="card-meta">PROBABILITY: ${prob}%</span>`;
+            card.onclick = () => updateSelection(i);
+            mount.appendChild(card);
+        });
+    }
+
+    function updateSelection(idx) {
+        activeMonth = idx;
+        const set = i18n[currentLang];
+        const data = cycleData[idx];
+        const langData = data[currentLang];
+        
+        document.getElementById('sidebar-month-name').innerText = langData.name + " " + set.ui.reportSuffix;
+        
+        // 渲染图表
+        const chartMount = document.getElementById('month-chart');
+        chartMount.innerHTML = '';
+        data.trend.forEach(v => {
+            const bar = document.createElement('div');
+            bar.className = 'chart-bar';
+            bar.style.height = v + '%';
+            chartMount.appendChild(bar);
+        });
+        document.getElementById('month-desc-text').innerText = langData.trendText;
+
+        // 渲染日历
+        renderCalendar(idx);
+
+        // 渲染板块预测
+        document.getElementById('sector-mount').innerHTML = `
+            <div class="sector-card">
+                <div class="sector-item">
+                    <div class="sector-header bull-header">▲ ${set.ui.sectors.bull}</div>
+                    <div class="sector-content">${langData.bullSectors}</div>
+                    <div class="sector-reason">${set.ui.sectors.why}: ${langData.bullWhy}</div>
+                </div>
+                <div style="height:1px; background:#222; margin:15px 0;"></div>
+                <div class="sector-item">
+                    <div class="sector-header bear-header">▼ ${set.ui.sectors.bear}</div>
+                    <div class="sector-content">${langData.bearSectors}</div>
+                    <div class="sector-reason">${set.ui.sectors.why}: ${langData.bearWhy}</div>
+                </div>
+            </div>
+        `;
+
+        document.querySelectorAll('.card').forEach((c, i) => c.classList.toggle('active', i === idx));
+    }
+
+    function renderCalendar(mIdx) {
+        const set = i18n[currentLang];
+        const firstDay = new Date(currentYear, mIdx, 1).getDay();
+        const daysCount = new Date(currentYear, mIdx + 1, 0).getDate();
+        const events = cycleData[mIdx].events;
+
+        let html = `<div class="calendar-grid">`;
+        set.days.forEach(d => html += `<div class="cal-head">${d}</div>`);
+        for(let i=0; i<firstDay; i++) html += `<div class="cal-day"></div>`;
+        for(let d=1; d<=daysCount; d++) {
+            const hasEvent = !!events[d.toString()];
+            const isToday = (d === new Date().getDate() && mIdx === new Date().getMonth() && currentYear === new Date().getFullYear());
+            html += `<div class="cal-day active ${isToday?'today':''} ${hasEvent?'event':''}" ${hasEvent?`data-day='${d}'`:''}>${d}</div>`;
+        }
+        html += `</div>`;
+        document.getElementById('cal-mount').innerHTML = html;
+
+        document.querySelectorAll('.cal-day.event').forEach(el => {
+            el.addEventListener('mouseenter', (e) => {
+                const dKey = el.dataset.day;
+                const ev = events[dKey][currentLang];
+                const setUI = i18n[currentLang].ui;
+                const tip = document.getElementById('tooltip');
+                tip.innerHTML = `
+                    <div class="tip-event-name">${ev.t}</div>
+                    <div style="font-size:0.8rem; color:#aaa; line-height:1.4;">${ev.d}</div>
+                    <div class="tip-expect"><strong>${setUI.expectation}</strong><br>${ev.exp}</div>
+                    <div class="scenario-row"><span style="color:var(--bull-color); font-weight:bold;">${setUI.scenarios.b}</span> <span>${ev.scenarios.bull}</span></div>
+                    <div class="scenario-row"><span style="color:var(--neutral-color); font-weight:bold;">${setUI.scenarios.n}</span> <span>${ev.scenarios.neut}</span></div>
+                    <div class="scenario-row"><span style="color:var(--bear-color); font-weight:bold;">${setUI.scenarios.be}</span> <span>${ev.scenarios.bear}</span></div>
+                `;
+                tip.style.display = 'block';
+                moveTooltip(e);
+            });
+            el.addEventListener('mousemove', moveTooltip);
+            el.addEventListener('mouseleave', () => document.getElementById('tooltip').style.display = 'none');
+        });
+    }
+
+    function moveTooltip(e) {
+        const tip = document.getElementById('tooltip');
+        let x = e.clientX + 15;
+        let y = e.clientY + 15;
+        // 简单溢出检测
+        if (x + 340 > window.innerWidth) x = e.clientX - 355;
+        if (y + 250 > window.innerHeight) y = e.clientY - 265;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+    }
+
+    window.onload = refresh;
+</script>
+</body>
+</html>
